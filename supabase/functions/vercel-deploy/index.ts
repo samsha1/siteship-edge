@@ -19,8 +19,8 @@ serve(async (req) => {
   const zipArrayBuffer = await zipRes.arrayBuffer();
 
   // Unzip in Deno: use `zip` module
-  const { unzip } = await import("https://deno.land/x/zip@v1.2.3/mod.ts");
-  const files = unzip(new Uint8Array(zipArrayBuffer));
+  const unzip = await import("https://deno.land/x/zip@v1.2.3/mod.ts");
+  const files = unzip.decompress(zipArrayBuffer);
 
   // Build Vercel files payload
   const vercelFiles = [];
