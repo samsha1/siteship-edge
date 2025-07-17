@@ -1,4 +1,3 @@
-// vercel/client.ts
 import { VercelConfig, VercelDomain } from "./types.ts";
 
 export class VercelAPI {
