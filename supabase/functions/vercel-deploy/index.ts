@@ -37,7 +37,7 @@ serve(async (req) => {
   const resp = await fetch("https://api.vercel.com/v13/deployments", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${Deno.env.get("VERCEL_TOKEN")}`,
+      Authorization: `Bearer ${Deno.env.get("VERCEL_ACCESS_TOKEN")}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ name: project, files, projectSettings: { framework: null } }),
