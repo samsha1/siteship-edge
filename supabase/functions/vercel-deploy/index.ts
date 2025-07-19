@@ -1,6 +1,8 @@
 import { serve } from "https://deno.land/std@0.131.0/http/server.ts";
 import { decompress } from "https://deno.land/x/zip@v1.2.3/decompress.ts";
 import { Octokit } from "https://esm.sh/@octokit/core@5.0.0";
+import { unzipSync } from "https://esm.sh/fflate@0.8.0?bundle";
+
 import { VercelDeployRequest, GitCreateTreeParamsTree } from "./types.ts";
 
 const GITHUB_REPO = "samsha1/siteshipai-codebox";
@@ -8,8 +10,16 @@ const GITHUB_TOKEN = Deno.env.get("GITHUB_ACCESS_TOKEN_FOR_AI_GENERATED_CODE")!;
 const VERCEL_TOKEN = Deno.env.get("VERCEL_TOKEN")!;
 const octokit = new Octokit({ auth: GITHUB_TOKEN });
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   try {
+      // Check if the request method is POST
+     if (req.method !== "POST") {
+      return new Response(
+        JSON.stringify({ success: false, message: "Method not allowed" }),
+        { status: 405, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
     const body: VercelDeployRequest = await req.json();
     const { username, publicUrl, projectName = "codebox", action = "deploy" } = body;
 
@@ -19,18 +29,24 @@ serve(async (req) => {
 
     const branch = `${username}-${Date.now()}`;
 
-    // 1. Download .zip
-    // const zipRes = await fetch(publicUrl);
-    // if (!zipRes.ok) throw new Error("Failed to download zip file.");
-    // const zipData = new Uint8Array(await zipRes.arrayBuffer());
-
-    // // 2. Decompress .zip file
-    const extractPath = `/tmp/${branch}`;
-    await Deno.mkdir(extractPath, { recursive: true });
-    await decompress(publicUrl, extractPath);
-
-    // 3. Read extracted files
-    const files = await collectFiles(extractPath);
+    // Fetch ZIP file from the public URL
+    const res = await fetch(publicUrl);
+    if (!res.ok) {
+      return new Response(
+        JSON.stringify({ error: "Failed to fetch ZIP file" }),
+        { status: 400 }
+      );
+    }
+    const zipData = new Uint8Array(await res.arrayBuffer());
+    const unzippedFiles = unzipSync(zipData); // Object: { [filename]: Uint8Array }
+    const files: { path: string; content: string }[] = [];
+    for (const [filename, content] of Object.entries(unzippedFiles)) {
+      const text = new TextDecoder().decode(content as Uint8Array);
+      files.push({ path: filename, content: text });
+      // Log for demo purposes (you can push this to GitHub instead)
+      console.log(`Unzipped: ${filename}`);
+      console.log(text);
+    }
 
     // 4. Push files to GitHub branch
     await pushToGitHub(branch, files);
@@ -89,8 +105,6 @@ async function pushToGitHub(branch: string, files: { path: string, content: stri
     base_tree: baseTree,
     tree: blobs.map(f => ({
       path: f.path,
-      mode: `100644`, // file mode
-      type: `blob`,
       sha: f.sha,
     })),
   });
