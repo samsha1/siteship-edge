@@ -2,13 +2,18 @@ import { serve } from "https://deno.land/std@0.131.0/http/server.ts";
 import { decompress } from "https://deno.land/x/zip@v1.2.3/decompress.ts";
 import { Octokit } from "https://esm.sh/@octokit/core@5.0.0";
 import { unzipSync } from "https://esm.sh/fflate@0.8.0?bundle";
-
 import { VercelDeployRequest, GitCreateTreeParamsTree } from "./types.ts";
+import {Vercel} from "npm:@vercel/sdk"
 
 const GITHUB_REPO = "samsha1/siteshipai-codebox";
 const GITHUB_TOKEN = Deno.env.get("GITHUB_ACCESS_TOKEN_FOR_AI_GENERATED_CODE")!;
 const VERCEL_TOKEN = Deno.env.get("VERCEL_TOKEN")!;
 const octokit = new Octokit({ auth: GITHUB_TOKEN });
+
+const vercel = new Vercel({
+  bearerToken: VERCEL_TOKEN,
+});
+
 
 Deno.serve(async (req) => {
   try {
@@ -129,27 +134,90 @@ async function pushToGitHub(branch: string, files: { path: string, content: stri
   });
 }
 
-async function deployToVercel(branch: string, projectName: string, username: string) {
-  const response = await fetch("https://api.vercel.com/v13/deployments", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${VERCEL_TOKEN}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      name: projectName,
-      gitSource: {
-        type: "github",
-        repoId: GITHUB_REPO,
-        ref: branch,
-      },
-      projectSettings: {
-        framework: "vite",
-      },
-      target: "production",
-    }),
-  });
+// async function deployToVercel(branch: string, projectName: string, username: string) {
+//   const response = await fetch("https://api.vercel.com/v13/deployments", {
+//     method: "POST",
+//     headers: {
+//       Authorization: `Bearer ${VERCEL_TOKEN}`,
+//       "Content-Type": "application/json",
+//     },
+//     body: JSON.stringify({
+//       name: projectName,
+//       gitSource: {
+//         type: "github",
+//         repoId: GITHUB_REPO,
+//         ref: branch,
+//       },
+//       projectSettings: {
+//         framework: "vite",
+//       },
+//       target: "production",
+//     }),
+//   });
 
-  const data = await response.json();
-  return `https://${username}.vercel.app`;
+//   const data = await response.json();
+//   return `https://${username}.vercel.app`;
+// }
+
+async function deployToVercel(branch: string, projectName: string, username: string) {
+  try {
+    // Create a new deployment
+    const createResponse = await vercel.deployments.createDeployment({
+      requestBody: {
+        name: projectName, //The project name used in the deployment URL
+        target: 'production',
+        gitSource: {
+          type: 'github',
+          repo: GITHUB_REPO,
+          ref: branch, 
+          org: 'samsha1', //For a personal account, the org-name is your GH username
+        },
+      },
+    });
+
+    const deploymentId = createResponse.id;
+
+    console.log(
+      `Deployment created: ID ${deploymentId} and status ${createResponse.status}`,
+    );
+
+    // Check deployment status
+    let deploymentStatus;
+    let deploymentURL;
+    do {
+      await new Promise((resolve) => setTimeout(resolve, 5000)); // Wait 5 seconds between checks
+
+      const statusResponse = await vercel.deployments.getDeployment({
+        idOrUrl: deploymentId,
+        withGitRepoInfo: 'true',
+      });
+
+      deploymentStatus = statusResponse.status;
+      deploymentURL = statusResponse.url;
+      console.log(`Deployment status: ${deploymentStatus}`);
+    } while (
+      deploymentStatus === 'BUILDING' ||
+      deploymentStatus === 'INITIALIZING'
+    );
+
+    if (deploymentStatus === 'READY') {
+      console.log(`Deployment successful. URL: ${deploymentURL}`);
+
+      const aliasResponse = await vercel.aliases.assignAlias({
+        id: deploymentId,
+        requestBody: {
+          alias: `${branch}-${username}.vercel.app`,
+          redirect: null,
+        },
+      });
+      console.log(`Alias created: ${aliasResponse.alias}`);
+      return aliasResponse.alias; // Return the alias URL
+    } else {
+      console.log('Deployment failed or was canceled');
+    }
+  } catch (error) {
+    console.error(
+      error instanceof Error ? `Error: ${error.message}` : String(error),
+    );
+  }
 }
