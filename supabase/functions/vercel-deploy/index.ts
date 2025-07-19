@@ -106,6 +106,8 @@ async function pushToGitHub(branch: string, files: { path: string, content: stri
     tree: blobs.map(f => ({
       path: f.path,
       sha: f.sha,
+      mode: "100644",
+      type: "blob",
     })),
   });
 
