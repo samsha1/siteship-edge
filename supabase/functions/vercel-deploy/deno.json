@@ -1,5 +1,6 @@
 {
   "imports": {
-    "unzip": "https://deno.land/x/zip@v1.2.3/mod.ts"
+    "unzip": "https://deno.land/x/zip@v1.2.3/mod.ts",
+    "Vercel": "npm:@vercel/sdk@2.0.0"
   }
 }

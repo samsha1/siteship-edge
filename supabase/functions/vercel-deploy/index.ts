@@ -1,49 +1,50 @@
-// index.ts
 import { serve } from "https://deno.land/std@0.170.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { VercelDeployRequest } from "./vercel/types.ts";
-// import { Vercel } from '@vercel/sdk';
+import { Octokit } from "https://esm.sh/octokit?dts";
+
+const TOKEN = Deno.env.get("GITHUB_TOKEN")!;
+const OWNER = "your-github-username";
+const REPO = "your-repo-name";
 
 serve(async (req) => {
-  const { username, publicUrl, projectName }: VercelDeployRequest = await req.json();
+  const { username, files } = await req.json() as {
+    username: string;
+    files: Array<{ name: string; content: string }>;
+  };
 
-  const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-  
-  // Download & unzip using OS command
-  const zipRes = await fetch(publicUrl);
-  if (!zipRes.ok) return new Response("Download failed", { status: 500 });
-  const data = new Uint8Array(await zipRes.arrayBuffer());
-  const tmpZip = await Deno.makeTempFile({ suffix: ".zip" });
-  await Deno.writeFile(tmpZip, data);
-  const outDir = await Deno.makeTempDir();
+  const timestamp = Date.now();
+  const branch = `generated/${username}-${timestamp}`;
+  const octokit = new Octokit({ auth: TOKEN });
 
-  const proc = Deno.run({ cmd: ["unzip", "-o", tmpZip, "-d", outDir], stdout: "piped", stderr: "piped" });
-  const { success } = await proc.status();
-  if (!success) {
-    const err = new TextDecoder().decode(await proc.stderrOutput());
-    return new Response(`Unzip failed: ${err}`, { status: 500 });
-  }
+  // Get the base SHA
+  const { data: refData } = await octokit.request(
+    "GET /repos/{owner}/{repo}/git/ref/heads/{branch}",
+    { owner: OWNER, repo: REPO, branch: "main" }
+  );
+  const baseSha = refData.object.sha;
 
-  // Read files
-  const files: Array<{ file: string; data: string }> = [];
-  for await (const entry of Deno.readDir(outDir)) {
-    const path = `${outDir}/${entry.name}`;
-    const content = await Deno.readTextFile(path);
-    files.push({ file: entry.name, data: content });
-  }
-
-  // Deploy to Vercel
-  const project = projectName || `${username}-site`;
-  const resp = await fetch("https://api.vercel.com/v13/deployments", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${Deno.env.get("VERCEL_ACCESS_TOKEN")}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ name: project, files, projectSettings: { framework: null } }),
+  // Create new branch
+  await octokit.request("POST /repos/{owner}/{repo}/git/refs", {
+    owner: OWNER,
+    repo: REPO,
+    ref: `refs/heads/${branch}`,
+    sha: baseSha,
   });
 
-  if (!resp.ok) return new Response(await resp.text(), { status: 500 });
-  const { url } = await resp.json();
-  return new Response(JSON.stringify({ deploy_url: `https://${url}` }), { headers: { "Content-Type": "application/json" } });
+  // Push files
+  for (const { name, content } of files) {
+    const path = `generated/${username}/${name}`;
+    await octokit.request("PUT /repos/{owner}/{repo}/contents/{path}", {
+      owner: OWNER,
+      repo: REPO,
+      path,
+      message: `Add ${name} for ${username}`,
+      content: btoa(unescape(encodeURIComponent(content))),
+      branch,
+    });
+  }
+
+  return new Response(JSON.stringify({ branch }), {
+    headers: { "Content-Type": "application/json" },
+  });
 });
