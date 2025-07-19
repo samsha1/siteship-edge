@@ -10,7 +10,7 @@ const octokit = new Octokit({ auth: GITHUB_TOKEN });
 
 serve(async (req) => {
   try {
-    const body = await req.json() as VercelDeployRequest;
+    const body: VercelDeployRequest = await req.json();
     const { username, publicUrl, projectName = "codebox", action = "deploy" } = body;
 
     if (!username || !publicUrl) {
