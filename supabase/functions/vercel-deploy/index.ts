@@ -1,5 +1,3 @@
-import { serve } from "https://deno.land/std@0.131.0/http/server.ts";
-import { decompress } from "https://deno.land/x/zip@v1.2.3/decompress.ts";
 import { Octokit } from "https://esm.sh/@octokit/core@5.0.0";
 import { unzipSync } from "https://esm.sh/fflate@0.8.0?bundle";
 import { VercelDeployRequest, GitCreateTreeParamsTree } from "./types.ts";
@@ -7,7 +5,8 @@ import {Vercel} from "npm:@vercel/sdk"
 
 const GITHUB_REPO = "samsha1/siteshipai-codebox";
 const GITHUB_TOKEN = Deno.env.get("GITHUB_ACCESS_TOKEN_FOR_AI_GENERATED_CODE")!;
-const VERCEL_TOKEN = Deno.env.get("VERCEL_TOKEN")!;
+const VERCEL_TOKEN = Deno.env.get("VERCEL_ACCESS_TOKEN")!;
+const VERCEL_GITHUB_REPO = "siteshipai-codebox"; // The Vercel project name
 const octokit = new Octokit({ auth: GITHUB_TOKEN });
 
 const vercel = new Vercel({
@@ -168,13 +167,13 @@ async function deployToVercel(branch: string, projectName: string, username: str
         target: 'production',
         gitSource: {
           type: 'github',
-          repo: GITHUB_REPO,
+          repo: VERCEL_GITHUB_REPO,
           ref: branch, 
           org: 'samsha1', //For a personal account, the org-name is your GH username
         },
       },
     });
-
+    console.log(`Creating deployment for branch: ${branch}`);
     const deploymentId = createResponse.id;
 
     console.log(
@@ -197,7 +196,7 @@ async function deployToVercel(branch: string, projectName: string, username: str
       console.log(`Deployment status: ${deploymentStatus}`);
     } while (
       deploymentStatus === 'BUILDING' ||
-      deploymentStatus === 'INITIALIZING'
+      deploymentStatus === 'INITIALIZING' || deploymentStatus === 'QUEUED'
     );
 
     if (deploymentStatus === 'READY') {
@@ -210,10 +209,11 @@ async function deployToVercel(branch: string, projectName: string, username: str
           redirect: null,
         },
       });
-      console.log(`Alias created: ${aliasResponse.alias}`);
-      return aliasResponse.alias; // Return the alias URL
+      console.log(`Alias assigned: ${branch}-${username}.vercel.app`);
+      console.log(`Alias created: ${aliasResponse}`);
+      return `https://${aliasResponse.alias}`; // Return the alias URL
     } else {
-      console.log('Deployment failed or was canceled');
+      console.log(`Deployment failed or was canceled: ${deploymentStatus}`);
     }
   } catch (error) {
     console.error(
