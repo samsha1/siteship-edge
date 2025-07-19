@@ -1,25 +1,13 @@
 export interface VercelDeployRequest {
-  username: string;        // subdomain part for deployment (e.g., samrat.vercel.app)
-  publicUrl: string;       // Supabase public URL to the .zip file
-  projectName?: string; 
-  action: 'list' | 'add' | 'delete';
+  username: string;        // Used for subdomain and branch
+  publicUrl: string;       // Supabase public URL of .zip file
+  projectName?: string;    // Optional Vercel project name
+  action?: 'deploy' | 'list' | 'delete'; // Optional future use
 }
 
-// vercel/types.ts
-
-export interface VercelConfig {
-  token: string;
-  teamId?: string;
-  projectId?: string;
-  retries?: number;
-  baseUrl?: string; // optional override
-}
-
-export interface VercelDomain {
-  name: string;
-  apexName: string;
-  verified: boolean;
-  createdAt: number;
-  updatedAt: number;
-  [key: string]: any;
-}
+export type GitCreateTreeParamsTree = {
+  path: string;
+  mode: string;
+  type: string;
+  sha: string;
+};

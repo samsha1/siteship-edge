@@ -1,50 +1,139 @@
-import { serve } from "https://deno.land/std@0.170.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { Octokit } from "https://esm.sh/octokit?dts";
+import { serve } from "https://deno.land/std@0.131.0/http/server.ts";
+import { decompress } from "https://deno.land/x/zip@v1.2.3/decompress.ts";
+import { Octokit } from "https://esm.sh/@octokit/core@5.0.0";
+import { VercelDeployRequest, GitCreateTreeParamsTree } from "./types.ts";
 
-const TOKEN = Deno.env.get("GITHUB_TOKEN")!;
-const OWNER = "your-github-username";
-const REPO = "your-repo-name";
+const GITHUB_REPO = "samsha1/siteshipai-codebox";
+const GITHUB_TOKEN = Deno.env.get("GITHUB_ACCESS_TOKEN_FOR_AI_GENERATED_CODE")!;
+const VERCEL_TOKEN = Deno.env.get("VERCEL_TOKEN")!;
+const octokit = new Octokit({ auth: GITHUB_TOKEN });
 
 serve(async (req) => {
-  const { username, files } = await req.json() as {
-    username: string;
-    files: Array<{ name: string; content: string }>;
-  };
+  try {
+    const body = await req.json() as VercelDeployRequest;
+    const { username, publicUrl, projectName = "codebox", action = "deploy" } = body;
 
-  const timestamp = Date.now();
-  const branch = `generated/${username}-${timestamp}`;
-  const octokit = new Octokit({ auth: TOKEN });
+    if (!username || !publicUrl) {
+      return new Response("Missing required fields", { status: 400 });
+    }
 
-  // Get the base SHA
-  const { data: refData } = await octokit.request(
-    "GET /repos/{owner}/{repo}/git/ref/heads/{branch}",
-    { owner: OWNER, repo: REPO, branch: "main" }
-  );
-  const baseSha = refData.object.sha;
+    const branch = `${username}-${Date.now()}`;
+
+    // 1. Download .zip
+    // const zipRes = await fetch(publicUrl);
+    // if (!zipRes.ok) throw new Error("Failed to download zip file.");
+    // const zipData = new Uint8Array(await zipRes.arrayBuffer());
+
+    // // 2. Decompress .zip file
+    const extractPath = `/tmp/${branch}`;
+    await Deno.mkdir(extractPath, { recursive: true });
+    await decompress(publicUrl, extractPath);
+
+    // 3. Read extracted files
+    const files = await collectFiles(extractPath);
+
+    // 4. Push files to GitHub branch
+    await pushToGitHub(branch, files);
+
+    // 5. Trigger Vercel deployment
+    const deployedUrl = await deployToVercel(branch, projectName, username);
+
+    return Response.json({ branch, deployedUrl });
+  } catch (err) {
+    console.error("Error:", err);
+    return new Response("Internal Error: " + err.message, { status: 500 });
+  }
+});
+
+// Helpers
+
+async function collectFiles(dir: string): Promise<{ path: string, content: string }[]> {
+  const result: { path: string, content: string }[] = [];
+  for await (const entry of Deno.readDir(dir)) {
+    const fullPath = `${dir}/${entry.name}`;
+    if (entry.isFile) {
+      const content = await Deno.readTextFile(fullPath);
+      result.push({ path: entry.name, content });
+    } else if (entry.isDirectory) {
+      const nested = await collectFiles(fullPath);
+      result.push(...nested.map(f => ({ path: `${entry.name}/${f.path}`, content: f.content })));
+    }
+  }
+  return result;
+}
+
+async function pushToGitHub(branch: string, files: { path: string, content: string }[]) {
+  // Get latest commit SHA from default branch
+  const { data: refData } = await octokit.request(`GET /repos/${GITHUB_REPO}/git/ref/heads/main`);
+  const latestCommitSha = refData.object.sha;
+
+  // Get tree SHA
+  const { data: commitData } = await octokit.request(`GET /repos/${GITHUB_REPO}/git/commits/${latestCommitSha}`);
+  const baseTree = commitData.tree.sha;
+
+  // Create blobs for each file
+  const blobs: GitCreateTreeParamsTree[] = await Promise.all(files.map(async file => {
+    const { data: blob } = await octokit.request("POST /repos/{owner}/{repo}/git/blobs", {
+      owner: GITHUB_REPO.split("/")[0],
+      repo: GITHUB_REPO.split("/")[1],
+      content: file.content,
+      encoding: "utf-8",
+    });
+    return { path: file.path, sha: blob.sha, mode: `100644`, type: `blob` }; // file mode
+  }));
+
+  // Create tree
+  const { data: tree } = await octokit.request("POST /repos/{owner}/{repo}/git/trees", {
+    owner: GITHUB_REPO.split("/")[0],
+    repo: GITHUB_REPO.split("/")[1],
+    base_tree: baseTree,
+    tree: blobs.map(f => ({
+      path: f.path,
+      mode: `100644`, // file mode
+      type: `blob`,
+      sha: f.sha,
+    })),
+  });
+
+  // Create commit
+  const { data: commit } = await octokit.request("POST /repos/{owner}/{repo}/git/commits", {
+    owner: GITHUB_REPO.split("/")[0],
+    repo: GITHUB_REPO.split("/")[1],
+    message: `Deploy ${branch}`,
+    tree: tree.sha,
+    parents: [latestCommitSha],
+  });
 
   // Create new branch
   await octokit.request("POST /repos/{owner}/{repo}/git/refs", {
-    owner: OWNER,
-    repo: REPO,
+    owner: GITHUB_REPO.split("/")[0],
+    repo: GITHUB_REPO.split("/")[1],
     ref: `refs/heads/${branch}`,
-    sha: baseSha,
+    sha: commit.sha,
+  });
+}
+
+async function deployToVercel(branch: string, projectName: string, username: string) {
+  const response = await fetch("https://api.vercel.com/v13/deployments", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${VERCEL_TOKEN}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      name: projectName,
+      gitSource: {
+        type: "github",
+        repoId: GITHUB_REPO,
+        ref: branch,
+      },
+      projectSettings: {
+        framework: "vite",
+      },
+      target: "production",
+    }),
   });
 
-  // Push files
-  for (const { name, content } of files) {
-    const path = `generated/${username}/${name}`;
-    await octokit.request("PUT /repos/{owner}/{repo}/contents/{path}", {
-      owner: OWNER,
-      repo: REPO,
-      path,
-      message: `Add ${name} for ${username}`,
-      content: btoa(unescape(encodeURIComponent(content))),
-      branch,
-    });
-  }
-
-  return new Response(JSON.stringify({ branch }), {
-    headers: { "Content-Type": "application/json" },
-  });
-});
+  const data = await response.json();
+  return `https://${username}.vercel.app`;
+}
