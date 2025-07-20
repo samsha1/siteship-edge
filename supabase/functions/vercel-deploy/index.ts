@@ -65,23 +65,6 @@ Deno.serve(async (req) => {
   }
 });
 
-// Helpers
-
-async function collectFiles(dir: string): Promise<{ path: string, content: string }[]> {
-  const result: { path: string, content: string }[] = [];
-  for await (const entry of Deno.readDir(dir)) {
-    const fullPath = `${dir}/${entry.name}`;
-    if (entry.isFile) {
-      const content = await Deno.readTextFile(fullPath);
-      result.push({ path: entry.name, content });
-    } else if (entry.isDirectory) {
-      const nested = await collectFiles(fullPath);
-      result.push(...nested.map(f => ({ path: `${entry.name}/${f.path}`, content: f.content })));
-    }
-  }
-  return result;
-}
-
 async function pushToGitHub(branch: string, files: { path: string, content: string }[]) {
   // Get latest commit SHA from default branch
   const { data: refData } = await octokit.request(`GET /repos/${GITHUB_REPO}/git/ref/heads/main`);
@@ -133,30 +116,6 @@ async function pushToGitHub(branch: string, files: { path: string, content: stri
   });
 }
 
-// async function deployToVercel(branch: string, projectName: string, username: string) {
-//   const response = await fetch("https://api.vercel.com/v13/deployments", {
-//     method: "POST",
-//     headers: {
-//       Authorization: `Bearer ${VERCEL_TOKEN}`,
-//       "Content-Type": "application/json",
-//     },
-//     body: JSON.stringify({
-//       name: projectName,
-//       gitSource: {
-//         type: "github",
-//         repoId: GITHUB_REPO,
-//         ref: branch,
-//       },
-//       projectSettings: {
-//         framework: "vite",
-//       },
-//       target: "production",
-//     }),
-//   });
-
-//   const data = await response.json();
-//   return `https://${username}.vercel.app`;
-// }
 
 async function deployToVercel(branch: string, projectName: string, username: string) {
   try {
