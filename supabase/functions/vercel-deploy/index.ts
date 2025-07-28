@@ -25,7 +25,7 @@ Deno.serve(async (req) => {
     // ----- fire‑and‑forget --------------------------------------------------
     (async () => {
       try {
-        const triggerUrl = `${AIRFLOW_API_URL}/api/v1/dags/${AIRFLOW_DAG_ID}/dagRuns`;
+        const triggerUrl = `${AIRFLOW_API_URL}/api/v2/dags/${AIRFLOW_DAG_ID}/dagRuns`;
         console.log("Triggering Airflow DAG:", triggerUrl);
         const now = new Date().toISOString(); // "2025-07-28T15:30:00.000Z"
         const dagPayload = {
