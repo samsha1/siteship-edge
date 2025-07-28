@@ -1,4 +1,4 @@
-import { VercelConfig, VercelDomain } from "./types.ts";
+import { VercelConfig, VercelDomain } from "../types.ts";
 
 export class VercelAPI {
   private token: string;

@@ -20,22 +20,31 @@ Deno.serve(async (req) => {
     if (!username || !url) {
       return new Response("Missing required fields", { status: 400 });
     }
+    console.log("Received request:", body);
 
     // ----- fire‑and‑forget --------------------------------------------------
     (async () => {
       try {
-        const triggerUrl = `${AIRFLOW_API_URL}/${AIRFLOW_DAG_ID}/dagRuns`;
-
+        const triggerUrl = `${AIRFLOW_API_URL}/api/v1/dags/${AIRFLOW_DAG_ID}/dagRuns`;
+        console.log("Triggering Airflow DAG:", triggerUrl);
+        const now = new Date().toISOString(); // "2025-07-28T15:30:00.000Z"
+        const dagPayload = {
+          logical_date: now,
+          conf: {
+            username,
+            url,
+            project_name
+          }
+        };
         await fetch(triggerUrl, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${AIRFLOW_AUTH_TOKEN}`,
           },
-          body: JSON.stringify({
-            conf: { username, url, project_name },
-          }),
+          body: JSON.stringify(dagPayload),
         });
+        console.log("DAG triggered successfully");
         // Any errors are logged but never surface to the client
       } catch (err) {
         console.error("Unable to trigger DAG:", err);
@@ -44,6 +53,7 @@ Deno.serve(async (req) => {
     // -----------------------------------------------------------------------
 
     // Instant reply – we’re not waiting for Airflow or the fetch above
+    console.log("Returning immediate response to client");
     return new Response(
       JSON.stringify({
         status: "queued",
