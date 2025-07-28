@@ -26,7 +26,6 @@ Deno.serve(async (req) => {
     (async () => {
       try {
         const triggerUrl = `${AIRFLOW_API_URL}/api/v2/dags/${AIRFLOW_DAG_ID}/dagRuns`;
-        console.log("Triggering Airflow DAG:", triggerUrl);
         const now = new Date().toISOString(); // "2025-07-28T15:30:00.000Z"
         const dagPayload = {
           logical_date: now,
@@ -53,7 +52,6 @@ Deno.serve(async (req) => {
     // -----------------------------------------------------------------------
 
     // Instant reply – we’re not waiting for Airflow or the fetch above
-    console.log("Returning immediate response to client");
     return new Response(
       JSON.stringify({
         status: "queued",
