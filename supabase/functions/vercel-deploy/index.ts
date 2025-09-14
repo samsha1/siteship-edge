@@ -39,9 +39,23 @@ Deno.serve(async (req) => {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${AIRFLOW_AUTH_TOKEN}`,
+            "Authorization": `Bearer ${AIRFLOW_AUTH_TOKEN}`,
           },
           body: JSON.stringify(dagPayload),
+        }).catch((err) => {
+          console.error(`Fetch error: ${err.message}`);
+          return new Response(
+            JSON.stringify({
+              status: "error",
+              message: "Workflow Failed",
+            }),
+            { status: 501, headers: { "Content-Type": "application/json" } },
+          );
+        }).then(async (res) => {
+          if (res && !res.ok) {
+            console.error(`Airflow responded with status: ${res.status}  ${res.statusText}`);
+            console.error(`Response body:, ${JSON.stringify(await res.text())}`);
+          }
         });
         console.log("DAG triggered successfully");
         // Any errors are logged but never surface to the client
