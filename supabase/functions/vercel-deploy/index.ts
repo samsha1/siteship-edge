@@ -17,7 +17,7 @@ Deno.serve(async (req) => {
     const body: VercelDeployRequest = await req.json();
     const { username, project_name, prompt, metadata } = body;
 
-    if (!username || project_name || prompt) {
+    if (!username || !project_name || !prompt) {
       return new Response("Missing required fields", { status: 400 });
     }
     console.log("Received request:", body);
@@ -26,7 +26,7 @@ Deno.serve(async (req) => {
     (async () => {
       try {
         const triggerUrl = `${AIRFLOW_API_URL}/api/v2/dags/${AIRFLOW_DAG_ID}/dagRuns`;
-        const now = new Date().toISOString(); // "2025-07-28T15:30:00.000Z"
+        const now = new Date().toISOString();
         const dagPayload = {
           logical_date: now,
           conf: {
