@@ -15,9 +15,9 @@ Deno.serve(async (req) => {
     }
 
     const body: VercelDeployRequest = await req.json();
-    const { url, username, project_name, action = "deploy" } = body;
+    const { username, project_name, prompt, metadata } = body;
 
-    if (!username || !url) {
+    if (!username || project_name || prompt) {
       return new Response("Missing required fields", { status: 400 });
     }
     console.log("Received request:", body);
@@ -31,8 +31,9 @@ Deno.serve(async (req) => {
           logical_date: now,
           conf: {
             username,
-            url,
-            project_name
+            project_name,
+            prompt,
+            metadata
           }
         };
         await fetch(triggerUrl, {
